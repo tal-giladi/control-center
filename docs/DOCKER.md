@@ -44,7 +44,11 @@ startup and rebuilds the database from it, so the dashboard opens with the same
 saved items, the same read and archived state, and the same watched sources.
 
 Provider API keys and the Gmail connection are deliberately not in the data
-repository and are entered once per machine in Settings.
+repository and are entered once per machine in Settings. Setting up the Gmail
+OAuth client is a separate ten-minute job: see [GMAIL_SETUP.md](GMAIL_SETUP.md).
+
+Open the dashboard as `http://localhost:3000`, not `127.0.0.1:3000` — the Google
+redirect URI is built from the address bar and Google matches it literally.
 
 ## Useful checks
 

@@ -144,10 +144,12 @@ The active reading queue covers the latest 36 hours; **Earlier** keeps older ext
 Sort each queue by **Priority**, **Newest**, or **Oldest**, search the extracted stories, and select one or more newsletters to see their coverage. Multi-newsletter stories remain one card, with all source evidence intact. Only 30 matching cards render initially; **Show 30 more** reveals the next batch. Ranking is stored with the stories, so changing filters or reopening the tab does not spend additional AI tokens. Previously extracted stories receive priority scores in bounded background batches without rereading their Gmail bodies.
 
 1. Create or select a project in [Google Cloud Console](https://console.cloud.google.com/).
-2. Enable the Gmail API and configure the OAuth consent screen.
-3. Create a **Web application** OAuth client.
-4. Copy the exact redirect URI shown under **Settings → Newsletters** into the OAuth client.
-5. Paste the client ID and secret, customize the Gmail search query if desired, and choose **Save & choose Gmail account**.
+2. Enable the Gmail API, then configure the OAuth consent screen: External, scope `gmail.readonly`, and **leave it in Testing** with your Gmail address added under Test users. Publishing an unverified app with this restricted scope is refused with `Error 403: access_denied`.
+3. Create a **Web application** OAuth client — a Desktop client rejects a redirect URI with a path.
+4. Add `http://localhost:3000/api/auth/google/callback` as an authorized redirect URI, character for character.
+5. Open the dashboard as `http://localhost:3000` (not `127.0.0.1`), paste the client ID and secret under **Settings → Newsletters**, customize the Gmail search query if desired, and choose **Save & choose Gmail account**.
+
+Full walkthrough, including every error message and what causes it: [docs/GMAIL_SETUP.md](docs/GMAIL_SETUP.md).
 
 The requested scope is Gmail read-only. The app never sends, labels, deletes, marks as read, or archives Gmail messages. Dashboard archive state is local only. Newsletter text is sent only to the selected AI provider for extraction; email addresses and subscriber-specific link URLs are masked first. Raw bodies are not stored locally; SQLite keeps issue metadata, a body hash, extracted story metadata, and deduplicated topic state.
 
