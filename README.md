@@ -10,6 +10,7 @@ Two additions on top of [mreflow/control-center](https://github.com/mreflow/cont
 
 - **The data lives in a private git repository**, one JSON file per row, so saved items, read and archived state, tasks, and watched sources follow you between machines. SQLite becomes a rebuildable local cache. Provider keys and the Gmail connection deliberately stay on the machine that holds them. See [docs/GIT_DATA_STORE.md](docs/GIT_DATA_STORE.md).
 - **It runs in Docker**, so no Node, npm, or long-lived server process is installed on the host. See [docs/DOCKER.md](docs/DOCKER.md).
+- **An external curator can rank the Industry tab** in place of an AI provider: `GET /api/curation` hands back the same candidate pool the model would receive, and `POST /api/curation` applies the picks to the dashboard. See [docs/EXTERNAL_CURATION.md](docs/EXTERNAL_CURATION.md).
 
 Both are opt-in: with `CONTROL_CENTER_GIT_REMOTE` unset the app behaves exactly like upstream.
 

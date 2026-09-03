@@ -1253,7 +1253,7 @@ function MentionsView({
           />
           <div className="mention-feed reveal delay-2">
             <div className="feed-sort-bar">
-              <span><Sparkles size={14} /> {data.curationMode && data.curationMode !== "local" ? `${AI_PROVIDER_LABELS[data.curationMode]} priority & page summaries` : "Built-in priority · enable AI for richer page summaries"}</span>
+              <span><Sparkles size={14} /> {data.curationMode && data.curationMode !== "local" ? `${data.curationMode === "external" ? "External curator" : AI_PROVIDER_LABELS[data.curationMode]} priority & page summaries` : "Built-in priority · enable AI for richer page summaries"}</span>
               <label>Sort mentions <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}><option value="priority">Priority</option><option value="newest">Newest first</option><option value="oldest">Oldest first</option></select></label>
             </div>
             {items.map((item) => (

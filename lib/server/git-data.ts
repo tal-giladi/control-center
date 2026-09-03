@@ -116,9 +116,20 @@ export async function ensureRepository(config: GitDataConfig) {
   return config.directory;
 }
 
+async function headCommit(config: GitDataConfig) {
+  try {
+    return await git(config, ["rev-parse", "HEAD"]);
+  } catch {
+    return "";
+  }
+}
+
 // Any local file state is discarded: the database is the merge point, so the
 // remote is taken verbatim and re-exported from the database afterwards.
+// Returns true only when the remote actually moved, because re-importing an
+// unchanged clone would replay the committed settings over a newer local edit.
 export async function pullLatest(config: GitDataConfig) {
+  const before = await headCommit(config);
   try {
     await git(config, ["fetch", "--prune", "origin", config.branch]);
   } catch {
@@ -126,10 +137,10 @@ export async function pullLatest(config: GitDataConfig) {
   }
   try {
     await git(config, ["checkout", "-B", config.branch, `origin/${config.branch}`]);
-    return true;
   } catch {
     return false;
   }
+  return (await headCommit(config)) !== before;
 }
 
 async function readSharedSettingsFile(config: GitDataConfig) {
@@ -161,21 +172,40 @@ async function hasPendingChanges(config: GitDataConfig) {
   return Boolean(await git(config, ["status", "--porcelain"]));
 }
 
-async function commitAndPush(config: GitDataConfig, message: string): Promise<GitSyncResult> {
-  await git(config, ["add", "--all"]);
-  if (!(await hasPendingChanges(config))) return { status: "unchanged" };
-  await git(config, ["commit", "--message", message]);
-  if (!config.push) return { status: "committed", pushed: false };
+// A commit made while the remote was unreachable -- no token yet, no network --
+// must not sit here forever just because nothing has changed since.
+async function unpushedCommits(config: GitDataConfig) {
+  try {
+    const count = await git(config, ["rev-list", "--count", `origin/${config.branch}..HEAD`]);
+    return Number.parseInt(count, 10) || 0;
+  } catch {
+    // No remote-tracking ref yet: everything committed here is unpushed.
+    try {
+      return Number.parseInt(await git(config, ["rev-list", "--count", "HEAD"]), 10) || 0;
+    } catch {
+      return 0;
+    }
+  }
+}
+
+async function push(config: GitDataConfig): Promise<Pick<GitSyncResult, "pushed" | "message">> {
+  if (!config.push) return { pushed: false };
   try {
     await git(config, ["push", "origin", `HEAD:${config.branch}`]);
-    return { status: "committed", pushed: true };
+    return { pushed: true };
   } catch (error) {
-    return {
-      status: "committed",
-      pushed: false,
-      message: error instanceof Error ? error.message : "Push failed.",
-    };
+    return { pushed: false, message: error instanceof Error ? error.message : "Push failed." };
   }
+}
+
+async function commitAndPush(config: GitDataConfig, message: string): Promise<GitSyncResult> {
+  await git(config, ["add", "--all"]);
+  if (!(await hasPendingChanges(config))) {
+    if (!(await unpushedCommits(config))) return { status: "unchanged" };
+    return { status: "committed", ...(await push(config)) };
+  }
+  await git(config, ["commit", "--message", message]);
+  return { status: "committed", ...(await push(config)) };
 }
 
 export async function syncNow(database: DatabaseSync): Promise<GitSyncResult> {
@@ -191,10 +221,7 @@ export async function syncNow(database: DatabaseSync): Promise<GitSyncResult> {
     if (await pullLatest(config)) await importFromGit(config, database);
 
     const exported = exportDatabaseToFiles(database, config.directory);
-    const settingsChanged = writeSharedSettingsFile(config, await readSettings() as unknown as Record<string, unknown>);
-    if (!exported.written && !exported.removed && !settingsChanged && !(await hasPendingChanges(config)))
-      return { status: "unchanged" };
-
+    writeSharedSettingsFile(config, await readSettings() as unknown as Record<string, unknown>);
     const result = await commitAndPush(
       config,
       `Sync ${exported.written} updated, ${exported.removed} removed at ${new Date().toISOString()}`,
@@ -210,6 +237,8 @@ export async function syncNow(database: DatabaseSync): Promise<GitSyncResult> {
   }
 }
 
+// Boot always imports, whether or not the remote moved: this machine's database
+// may be empty, or a container rebuild away from whatever the clone holds.
 export async function restoreFromGit(database: DatabaseSync) {
   const config = gitDataConfig();
   if (!config) return { status: "disabled" as const };

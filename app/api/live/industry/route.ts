@@ -11,6 +11,7 @@ import { industryCacheScope } from "@/lib/collector-scopes";
 import { curateIndustryDiscoveries, selectDiverseIndustryDiscoveries } from "@/lib/industry-curation";
 import { listIndustryDiscoveries, pruneIndustryDiscoveries, upsertIndustryDiscoveries } from "@/lib/industry-store";
 import { curateIndustryWithAi } from "@/lib/server/industry-ai";
+import { readCurationSelections, writeCurationBrief, type CurationCandidate } from "@/lib/curation-store";
 import {
   readCollectorSnapshot,
   writeCollectorSnapshot,
@@ -145,16 +146,71 @@ async function collectIndustry() {
   let selected = local.selected;
   let curationMode: NonNullable<LiveFeedResponse["curationMode"]> = "local";
   const providerStatuses: NonNullable<LiveFeedResponse["providerStatuses"]> = [];
-  if (settings.ai.provider === "none") {
+
+  // The pool an external curator works from is the same one the AI provider
+  // would receive: everything the local ranking kept or deferred, minus the
+  // duplicate coverage it already folded together.
+  const pool = [...local.selected, ...local.deferred]
+    .filter((candidate) => candidate.deferredReason !== "similar-event")
+    .sort((left, right) => right.score - left.score)
+    .slice(0, 120);
+  writeCurationBrief(database, {
+    category: "industry",
+    generatedAt: checkedAt,
+    limit: settings.industry.dailyLimit,
+    niche: settings.industry.description,
+    keywords: settings.industry.keywords,
+    excludedTerms: settings.industry.excludedTerms,
+    candidates: pool.map((candidate): CurationCandidate => ({
+      id: candidate.discoveryId,
+      title: candidate.item.title,
+      summary: (candidate.item.summary || "").slice(0, 600),
+      source: candidate.item.source,
+      url: candidate.item.url || "",
+      publishedAt: candidate.item.publishedAt || candidate.item.discoveredAt || "",
+      localScore: candidate.score,
+      localReasons: candidate.reasons.slice(0, 4),
+      corroboratingSources: candidate.corroboratingSources.slice(0, 6),
+    })),
+  });
+
+  const external = readCurationSelections(database, "industry", Date.parse(checkedAt));
+  const applySelections = (
+    selections: readonly { discoveryId: string; score: number; reason: string }[],
+  ) => {
+    const byId = new Map(pool.map((candidate) => [candidate.discoveryId, candidate]));
+    const reranked = selections.flatMap((selection) => {
+      const candidate = byId.get(selection.discoveryId);
+      return candidate ? [{
+        ...candidate,
+        score: selection.score,
+        reasons: [selection.reason, ...candidate.reasons],
+      }] : [];
+    });
+    const minimumUsefulSet = Math.min(20, settings.industry.dailyLimit, local.selected.length);
+    return selectDiverseIndustryDiscoveries(
+      [...reranked, ...local.selected],
+      { limit: Math.min(settings.industry.dailyLimit, Math.max(reranked.length, minimumUsefulSet)) },
+    ).selected;
+  };
+
+  // Picks posted to /api/curation stand in for the model entirely, whether or
+  // not a provider is configured.
+  if (external.selections.length) {
+    selected = applySelections(external.selections);
+    curationMode = "external";
+    providerStatuses.push({
+      provider: `${external.curator} curation`,
+      state: "live",
+      message: `${external.selections.length} external picks; ${selected.length} important updates surfaced from ${rawItems.length} discoveries.`,
+    });
+  } else if (settings.ai.provider === "none") {
     providerStatuses.push({
       provider: "AI curation",
       state: "disabled",
       message: `Local importance ranking surfaced ${selected.length} of ${rawItems.length} current discoveries.`,
     });
   } else {
-    const pool = [...local.selected, ...local.deferred]
-      .filter((candidate) => candidate.deferredReason !== "similar-event")
-      .sort((left, right) => right.score - left.score);
     try {
       const ai = await curateIndustryWithAi(settings, pool, {
         niche: settings.industry.description,
@@ -163,30 +219,12 @@ async function collectIndustry() {
         limit: settings.industry.dailyLimit,
         now: Date.parse(checkedAt),
       });
-      const byId = new Map(pool.map((candidate) => [candidate.discoveryId, candidate]));
-      const aiScores = new Map(ai.selections.map((selection) => [selection.discoveryId, selection]));
-      const reranked = ai.selections.flatMap((selection) => {
-        const candidate = byId.get(selection.discoveryId);
-        return candidate ? [{
-          ...candidate,
-          score: selection.score,
-          reasons: [selection.reason, ...candidate.reasons],
-        }] : [];
-      });
-      const minimumUsefulSet = Math.min(20, settings.industry.dailyLimit, local.selected.length);
-      const targetSize = Math.min(
-        settings.industry.dailyLimit,
-        Math.max(reranked.length, minimumUsefulSet),
-      );
-      selected = selectDiverseIndustryDiscoveries(
-        [...reranked, ...local.selected],
-        { limit: targetSize },
-      ).selected;
+      selected = applySelections(ai.selections);
       curationMode = ai.provider;
       providerStatuses.push({
         provider: `${ai.provider} curation`,
         state: "live",
-        message: `${aiScores.size} semantic picks; ${selected.length} important updates surfaced from ${rawItems.length} discoveries.`,
+        message: `${ai.selections.length} semantic picks; ${selected.length} important updates surfaced from ${rawItems.length} discoveries.`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "AI curation failed";

@@ -132,7 +132,7 @@ export type LiveStory = {
   importanceScore?: number;
   importanceReason?: string;
   aiSummary?: string;
-  curationMode?: "local" | AiKeyProvider;
+  curationMode?: "local" | "external" | AiKeyProvider;
   collectionScope?: string;
   workflow?: ContentWorkflow;
 };
@@ -163,7 +163,7 @@ export type LiveFeedResponse = {
   freshnessHours?: number;
   discoveredCount?: number;
   surfacedLimit?: number;
-  curationMode?: "local" | AiKeyProvider;
+  curationMode?: "local" | "external" | AiKeyProvider;
   archivedItems?: LiveStory[];
   archiveCount?: number;
   historyItems?: LiveStory[];
@@ -175,7 +175,7 @@ export type NewsletterFeedResponse = {
   connected: boolean;
   aiConfigured?: boolean;
   aiProvider?: AiKeyProvider;
-  curationMode?: "local" | AiKeyProvider;
+  curationMode?: "local" | "external" | AiKeyProvider;
   checkedAt: string;
   items: NewsletterTopic[];
   archivedItems: NewsletterTopic[];
@@ -235,7 +235,7 @@ export type NewsletterTopic = {
   importanceScore?: number;
   importanceBaseScore?: number;
   importanceReason?: string;
-  curationMode?: "local" | AiKeyProvider;
+  curationMode?: "local" | "external" | AiKeyProvider;
   receivedAt: string;
   url: string;
   gmailUrl: string;

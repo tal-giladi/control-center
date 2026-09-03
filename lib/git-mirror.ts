@@ -8,7 +8,11 @@ import type { DatabaseSync } from "node:sqlite";
 // they are re-derived from the sources on the next collection run and would
 // otherwise rewrite most of the tree every cycle.
 export const MIRRORED_DATA_DIRECTORY = "data";
-const excludedTables = new Set(["collector_snapshots"]);
+// collector_snapshots is the last collection run; curation_candidates and
+// curation_briefs are republished on every run from rows that are mirrored
+// anyway. The curator's answers in curation_selections are a real decision and
+// do travel.
+const excludedTables = new Set(["collector_snapshots", "curation_candidates", "curation_briefs"]);
 const identifierPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const safeSlugPattern = /^[A-Za-z0-9._-]{1,80}$/;
 

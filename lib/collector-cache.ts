@@ -86,6 +86,18 @@ export function readCollectorSnapshot<T>(
   }
 }
 
+// Forces the next read of a tab to re-run its collector instead of serving the
+// last snapshot. Used when something outside the collection run changes what
+// that tab should show.
+export function invalidateCollectorSnapshot(
+  database: DatabaseSync,
+  collector: CollectorCacheKey,
+) {
+  return Number(
+    database.prepare("DELETE FROM collector_snapshots WHERE collector = ?").run(collector).changes,
+  ) > 0;
+}
+
 export function updateCollectorSnapshotArchive(
   database: DatabaseSync,
   collector: CollectorCacheKey,
