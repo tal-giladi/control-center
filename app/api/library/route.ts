@@ -1,5 +1,6 @@
 import { getDatabase, setContentArchived, type ContentCategory } from "@/lib/server/database";
 import { updateCollectorSnapshotArchive } from "@/lib/collector-cache";
+import { requestGitSync } from "@/lib/server/git-data";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,7 @@ export async function PATCH(request: Request) {
     );
     database.exec("COMMIT");
     transactionOpen = false;
+    requestGitSync(database);
     return Response.json({ ok: true });
   } catch (error) {
     if (transactionOpen) {

@@ -1,5 +1,7 @@
 import type { SettingsUpdate } from "@/lib/types";
 import { disconnectGmail, readSettings, toPublicSettings, updateSettings } from "@/lib/server/settings";
+import { getDatabase } from "@/lib/server/database";
+import { requestGitSync } from "@/lib/server/git-data";
 
 export const runtime = "nodejs";
 
@@ -10,7 +12,11 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const update = await request.json() as SettingsUpdate;
-    return Response.json(await updateSettings(update));
+    const saved = await updateSettings(update);
+    // Watched sources, keywords and brief sections travel with the data
+    // repository; the credentials in the same file never leave this machine.
+    requestGitSync(getDatabase());
+    return Response.json(saved);
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not save settings." }, { status: 400 });
   }

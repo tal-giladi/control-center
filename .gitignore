@@ -17,3 +17,6 @@
 # typescript
 *.tsbuildinfo
 .gstack/
+
+# docker environment file holding the data-repository token
+docker.env

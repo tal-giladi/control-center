@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+.next
+out
+*.log
+.control-center
+docker.env
+.env
+.env.*
+!.env.example

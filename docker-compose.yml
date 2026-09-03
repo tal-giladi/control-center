@@ -1,0 +1,31 @@
+services:
+  control-center:
+    build: .
+    image: control-center:local
+    container_name: control-center
+    # Published on the host loopback only: the dashboard ships without
+    # authentication and must not be reachable from the network.
+    ports:
+      - "127.0.0.1:3000:3000"
+    # Holds the data-repository remote and token. Point CONTROL_CENTER_ENV_FILE
+    # at a path outside the repository to keep the token off a synced drive.
+    env_file:
+      - path: ${CONTROL_CENTER_ENV_FILE:-./docker.env}
+        required: false
+    environment:
+      CONTROL_CENTER_DATA_DIR: /data
+      CONTROL_CENTER_GIT_DIR: /data/git-store
+      CONTROL_CENTER_GIT_BRANCH: ${CONTROL_CENTER_GIT_BRANCH:-main}
+      CONTROL_CENTER_GIT_SYNC_SECONDS: ${CONTROL_CENTER_GIT_SYNC_SECONDS:-120}
+    volumes:
+      - control-center-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+volumes:
+  control-center-data:

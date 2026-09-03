@@ -4,6 +4,15 @@ A local-first business dashboard for industry updates, strict brand mentions, ne
 
 Every fresh install starts empty. There are no built-in names, companies, websites, social profiles, API keys, or demo records. Each user tailors the dashboard to their own niche in **Settings**.
 
+## This fork
+
+Two additions on top of [mreflow/control-center](https://github.com/mreflow/control-center); everything else is unchanged.
+
+- **The data lives in a private git repository**, one JSON file per row, so saved items, read and archived state, tasks, and watched sources follow you between machines. SQLite becomes a rebuildable local cache. Provider keys and the Gmail connection deliberately stay on the machine that holds them. See [docs/GIT_DATA_STORE.md](docs/GIT_DATA_STORE.md).
+- **It runs in Docker**, so no Node, npm, or long-lived server process is installed on the host. See [docs/DOCKER.md](docs/DOCKER.md).
+
+Both are opt-in: with `CONTROL_CENTER_GIT_REMOTE` unset the app behaves exactly like upstream.
+
 ## Install and open
 
 Requirements: [Node.js 24.19 or newer](https://nodejs.org/en/download), npm, and a modern desktop browser.

@@ -3,6 +3,7 @@ import { getDatabase } from "@/lib/server/database";
 import { hasWorkspaceState, readWorkspaceState, writeWorkspaceState } from "@/lib/workspace-store";
 import { cleanTaskItems } from "@/lib/tasks";
 import { legacyBrowserImportAllowed } from "@/lib/server/settings";
+import { requestGitSync } from "@/lib/server/git-data";
 
 export const runtime = "nodejs";
 
@@ -60,7 +61,10 @@ export async function PUT(request: Request) {
       reminders: cleanReminders(body.reminders),
       tasks: cleanTaskItems(body.tasks),
     };
-    return Response.json(writeWorkspaceState(getDatabase(), state));
+    const database = getDatabase();
+    const saved = writeWorkspaceState(database, state);
+    requestGitSync(database);
+    return Response.json(saved);
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Could not save the local workspace." }, { status: 400 });
   }
