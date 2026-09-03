@@ -1,0 +1,5 @@
+# The askpass helper runs inside a Linux container. Checked out with CRLF on
+# Windows its shebang breaks and every git operation fails to authenticate.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
