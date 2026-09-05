@@ -255,13 +255,30 @@ export async function prepareNewsletterExtractionBatch(settings: Settings, limit
   const token = await getGmailAccessToken();
   const pendingIds = await pendingNewsletterMessageIds(settings, token);
   const batch = pendingIds.slice(0, Math.max(1, Math.min(MAX_NEW_ISSUES_PER_PASS, limit)));
+  const database = getDatabase();
+  const scope = newsletterCollectionScope(settings);
   const results = await settleWithConcurrency(batch, 4, async (id) => {
     const message = await gmailJson<GmailMessage>(`/messages/${id}?format=full`, token);
     const issue = parseIssue(message, mailbox);
-    // Housekeeping mail carries no news and is not worth a curator's time.
-    if (isNewsletterHousekeepingSubject(issue.subject)) return null;
     const prepared = prepareNewsletterForAi(issue);
-    if (!prepared.bodyText || !prepared.links.length) return null;
+    // Housekeeping mail and issues with no readable body or links carry no news.
+    // They are recorded as processed with no mentions -- exactly what the AI path
+    // does with them -- so they stop occupying a slot in every later batch.
+    if (isNewsletterHousekeepingSubject(issue.subject) || !prepared.bodyText || !prepared.links.length) {
+      saveNewsletterIssue(database, {
+        messageId: issue.message.id,
+        mailbox,
+        sender: issue.sender,
+        subject: issue.subject,
+        receivedAt: issue.receivedAt,
+        gmailUrl: issue.gmailUrl,
+        bodyHash: createHash("sha256").update(`${issue.html} ${issue.text}`).digest("hex"),
+        processedAt: new Date().toISOString(),
+        processorVersion: NEWSLETTER_PROCESSOR_VERSION,
+        processorScope: scope,
+      }, []);
+      return null;
+    }
     return {
       messageId: issue.message.id,
       // Addresses and subscriber-specific URLs are masked before the evidence
