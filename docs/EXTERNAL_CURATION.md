@@ -108,8 +108,75 @@ lets through a story about "armed agents at voting sites" because *agents* is a
 tracked keyword, and it cannot tell that thirty stories about one model launch
 should be one entry with the best source chosen. That is the job.
 
+## Newsletters
+
+Newsletters work the same way but the job is different: the provider there does
+not rank, it *extracts* — turning an email body into news stories. Without it the
+tab has no fallback at all and stays empty, which is why the same endpoint covers
+it.
+
+```
+GET  /api/curation?category=newsletters&limit=8   → pending issues with their evidence
+POST /api/curation?category=newsletters           → the stories found in them
+```
+
+The GET returns each pending Gmail issue as the model would see it: sender and
+subject with addresses masked, the flattened body text, and the numbered link
+labels (`L1`, `L2`, …) whose real URLs are deliberately withheld.
+
+```json
+{
+  "issues": [
+    {
+      "messageId": "1a06cbe3a9d866fa",
+      "sender": "The Code",
+      "subject": "Tech CEO almost got AI scammed",
+      "receivedAt": "2026-09-04T06:12:00.000Z",
+      "bodyText": "...",
+      "links": [{ "id": "L4", "title": "GPT-6 Astra" }]
+    }
+  ],
+  "pendingCount": 10
+}
+```
+
+POST one entry per issue. An issue with nothing newsworthy in it takes an empty
+list — that is a real answer, and it marks the issue processed so it stops coming
+back:
+
+```json
+{
+  "issues": [
+    {
+      "messageId": "1a06cbe3a9d866fa",
+      "stories": [
+        {
+          "title": "OpenAI ships GPT-6 Astra with design and coding gains",
+          "summary": "OpenAI released GPT-6 Astra, reported beating Sol and Fable on coding accuracy and API cost...",
+          "linkIds": ["L4", "L5"],
+          "score": 88,
+          "reason": "The frontier model release that resets coding and design workflows.",
+          "sponsored": false
+        }
+      ]
+    },
+    { "messageId": "1a07065a8807dfc4", "stories": [] }
+  ]
+}
+```
+
+Stories go through `validateNewsletterAiStories`, the same gate the model's reply
+passes: a title under 12 characters, a summary under 20, a score under 55, a
+missing `sponsored: false`, or a link id not in that issue all drop the story. A
+story keeps up to four link ids; each becomes one mention, and cross-newsletter
+grouping then folds repeat coverage into a single topic.
+
+Bodies are **not** stored between the two calls. The POST re-reads the messages
+from Gmail and re-derives the link ids, so the app keeps its property of never
+persisting raw newsletter content — the ids in your answer must come from the GET
+you are replying to, and a new GET renumbers them.
+
 ## Scope
 
-Industry only. Mentions and Newsletters still use the configured provider or
-their built-in ranking; the store is keyed by category so they can be added the
-same way.
+Industry and Newsletters. Mentions still uses the configured provider or its
+built-in ranking.

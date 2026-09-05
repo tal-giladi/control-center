@@ -4,7 +4,11 @@ import type { DatabaseSync } from "node:sqlite";
 // configured AI provider would otherwise do. The collector publishes the same
 // candidate pool the model would have been given, and the curator posts back
 // the same shape of answer, so everything downstream is unchanged.
-export type CurationCategory = "industry";
+// Industry hands out a scored candidate pool and takes back a ranking.
+// Newsletters hands out prepared email evidence and takes back extracted
+// stories; it keeps no pool of its own, because the evidence is re-read from
+// Gmail rather than stored.
+export type CurationCategory = "industry" | "newsletters";
 
 export type CurationCandidate = {
   id: string;

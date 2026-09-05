@@ -11,6 +11,9 @@ import {
   newsletterMentionId,
   newsletterPublisher,
   newsletterSenderLabel,
+  maskNewsletterIdentifiers,
+  prepareNewsletterForAi,
+  validateNewsletterAiStories,
   type GmailMessagePart,
   type NewsletterMentionRecord,
   type ExtractedNewsletterLink,
@@ -227,6 +230,95 @@ function topicLists(
       item.kind === "newsletter-topic" &&
       item.collectionScope === newsletterCollectionScope(settings) &&
       item.workflow?.archiveReason === "expired").map(newsletterPriority)),
+  };
+}
+
+// Extraction -- turning an email body into stories -- is the one part of the
+// newsletter pipeline that needs judgement. These two halves let an external
+// curator supply it instead of a configured AI provider: the first hands out the
+// same evidence the model would receive, the second applies the answer through
+// exactly the same validation and storage path.
+async function pendingNewsletterMessageIds(settings: Settings, token: string) {
+  const messageIds = await listMessageIds(token, settings.newsletters.gmailQuery);
+  const known = knownNewsletterIssueIds(
+    getDatabase(),
+    settings.newsletters.connectedEmail,
+    messageIds,
+    NEWSLETTER_PROCESSOR_VERSION,
+    newsletterCollectionScope(settings),
+  );
+  return messageIds.filter((id) => !known.has(id));
+}
+
+export async function prepareNewsletterExtractionBatch(settings: Settings, limit = MAX_NEW_ISSUES_PER_PASS) {
+  const mailbox = settings.newsletters.connectedEmail;
+  const token = await getGmailAccessToken();
+  const pendingIds = await pendingNewsletterMessageIds(settings, token);
+  const batch = pendingIds.slice(0, Math.max(1, Math.min(MAX_NEW_ISSUES_PER_PASS, limit)));
+  const results = await settleWithConcurrency(batch, 4, async (id) => {
+    const message = await gmailJson<GmailMessage>(`/messages/${id}?format=full`, token);
+    const issue = parseIssue(message, mailbox);
+    // Housekeeping mail carries no news and is not worth a curator's time.
+    if (isNewsletterHousekeepingSubject(issue.subject)) return null;
+    const prepared = prepareNewsletterForAi(issue);
+    if (!prepared.bodyText || !prepared.links.length) return null;
+    return {
+      messageId: issue.message.id,
+      // Addresses and subscriber-specific URLs are masked before the evidence
+      // leaves the app, exactly as they are for a provider.
+      sender: maskNewsletterIdentifiers(issue.sender),
+      subject: maskNewsletterIdentifiers(issue.subject),
+      receivedAt: issue.receivedAt,
+      bodyText: prepared.bodyText,
+      links: prepared.links.map(({ id, title }) => ({ id, title })),
+    };
+  });
+  return {
+    mailbox,
+    issues: results.flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : [])),
+    pendingCount: pendingIds.length,
+    unreadable: results.filter((result) => result.status === "rejected").length,
+  };
+}
+
+export async function applyExternalNewsletterStories(
+  settings: Settings,
+  storiesByMessageId: ReadonlyMap<string, unknown>,
+) {
+  const mailbox = settings.newsletters.connectedEmail;
+  const scope = newsletterCollectionScope(settings);
+  const database = getDatabase();
+  const checkedAt = new Date().toISOString();
+  const token = await getGmailAccessToken();
+  // The message is read again rather than held in the database between the two
+  // calls: raw newsletter bodies are deliberately never stored.
+  const results = await settleWithConcurrency([...storiesByMessageId.keys()], 4, async (id) => {
+    const message = await gmailJson<GmailMessage>(`/messages/${id}?format=full`, token);
+    const issue = parseIssue(message, mailbox);
+    const prepared = prepareNewsletterForAi(issue);
+    issue.links = validateNewsletterAiStories(storiesByMessageId.get(id), prepared.links);
+    return issue;
+  });
+  const parsedIssues = results.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []));
+  const redirectResult = await resolveTrackedLinks(parsedIssues);
+  for (const issue of parsedIssues) {
+    saveNewsletterIssue(database, {
+      messageId: issue.message.id,
+      mailbox,
+      sender: issue.sender,
+      subject: issue.subject,
+      receivedAt: issue.receivedAt,
+      gmailUrl: issue.gmailUrl,
+      bodyHash: createHash("sha256").update(`${issue.html} ${issue.text}`).digest("hex"),
+      processedAt: checkedAt,
+      processorVersion: NEWSLETTER_PROCESSOR_VERSION,
+      processorScope: scope,
+    }, mentionsForIssue(issue, mailbox, redirectResult.resolved, checkedAt));
+  }
+  return {
+    issues: parsedIssues.length,
+    stories: parsedIssues.reduce((total, issue) => total + issue.links.length, 0),
+    failed: results.filter((result) => result.status === "rejected").length,
   };
 }
 

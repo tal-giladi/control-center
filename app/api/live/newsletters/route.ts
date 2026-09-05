@@ -43,8 +43,10 @@ export async function GET(request: Request) {
       errors: [
         ...(!connected && saved.configured
           ? ["Gmail is disconnected. Saved newsletter intelligence remains available locally."] : []),
-        ...(connected && !aiConfigured
-          ? ["Newsletter intelligence requires a configured AI provider in Settings → AI curation. Choose a cloud provider with an API key or a running local model."] : []),
+        // Once an external curator has extracted stories the tab is working as
+        // intended, so the missing-provider notice would just be noise.
+        ...(connected && !aiConfigured && !saved.items.length
+          ? ["Newsletter extraction needs either a configured AI provider in Settings → AI curation, or an external curator working through /api/curation?category=newsletters."] : []),
       ],
     }, "saved-fallback");
   }
